@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-Setup"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <DynamicUpdate>
+        <WillShowUI>OnError</WillShowUI>
+      </DynamicUpdate>
+      <ImageInstall>
+        <OSImage>
+          <Compact>true</Compact>
+          <WillShowUI>OnError</WillShowUI>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/INDEX</Key>
+              <Value>1</Value>
+            </MetaData>
+          </InstallFrom>
+        </OSImage>
+      </ImageInstall>
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <ProductKey>
+          <Key />
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
+      </UserData>
+    </component>
+  </settings>
+
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS">
+      <ComputerName>TINY11-KVM</ComputerName>
+      <TimeZone>China Standard Time</TimeZone>
+      <ConfigureChatAutoInstall>false</ConfigureChatAutoInstall>
+    </component>
+  </settings>
+
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS">
+      <InputLocale>en-GB</InputLocale>
+      <SystemLocale>en-GB</SystemLocale>
+      <UILanguage>en-GB</UILanguage>
+      <UserLocale>en-HK</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>1</ProtectYourPC>
+      </OOBE>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>Keep the KVM guest awake</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+          <CommandLine>cmd.exe /c powercfg /change standby-timeout-ac 0 &amp; powercfg /change monitor-timeout-ac 0 &amp; powercfg /hibernate off</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Description>Enable RDP through the localhost host forward</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Type DWord -Value 0; Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name UserAuthentication -Type DWord -Value 1; if (-not (Get-NetFirewallRule -DisplayName 'RDP for local KVM forward' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -DisplayName 'RDP for local KVM forward' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389 -Profile Any | Out-Null }&quot;</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Description>Record first-login completion</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+          <CommandLine>cmd.exe /c if not exist &quot;%ProgramData%\LazyingArt&quot; mkdir &quot;%ProgramData%\LazyingArt&quot; &amp; echo complete&gt;&quot;%ProgramData%\LazyingArt\tiny11-first-login.txt&quot;</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Description>Run the private KVM guest bootstrap</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;$volume = Get-Volume | Where-Object FileSystemLabel -eq 'TINY11TOOLS' | Select-Object -First 1; if ($volume) { &amp; (Join-Path ($volume.DriveLetter + ':\') 'bootstrap.ps1') }&quot;</CommandLine>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

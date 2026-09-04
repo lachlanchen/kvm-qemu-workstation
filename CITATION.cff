@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use KVM QEMU Workstation, please cite this repository."
+type: software
+title: "KVM QEMU Workstation: Reproducible Windows and macOS VM orchestration"
+version: 0.1.0
+date-released: 2026-09-04
+abstract: "Sanitized, resource-aware KVM/QEMU launch and recovery tooling for Windows and macOS guests on Linux workstations."
+authors:
+  - family-names: Chen
+    given-names: Lachlan
+    alias: lachlanchen
+repository-code: "https://github.com/lachlanchen/kvm-qemu-workstation"
+url: "https://lazying.art"
+keywords:
+  - kvm
+  - qemu
+  - windows
+  - macos
+  - virtualization
+  - novnc
+  - reproducible-workflows
+license: MIT

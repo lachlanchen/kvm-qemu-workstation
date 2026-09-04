@@ -1,0 +1,55 @@
+# VM media and mutable machine state
+*.iso
+*.img
+*.dmg
+*.qcow2
+*.vhd
+*.vhdx
+*.raw
+*.fd
+*.nvram
+*.pvm
+*.utm
+*.vbox
+*.vmem
+*.vmsn
+*.vmss
+*.vmtm
+*.vmx
+
+# Runtime data
+runtime/
+state/
+logs/
+disks/
+installer/
+sources/
+private/
+*.pid
+*.sock
+*.log
+*.partial
+*.tmp
+*.jsonl
+
+# Credentials and machine identity
+.env
+*.key
+*.pem
+authorized_keys
+config.env
+config.plist
+
+# Windows build output
+/tiny11/
+tiny11.iso
+oscdimg.exe
+build-result.json
+tiny11_*.log
+
+# Tool caches
+.venv/
+venv/
+__pycache__/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
+windows_launcher=${KVM_WORKSTATION_WINDOWS_LAUNCHER:-$repo_dir/windows/tiny11/windows-tiny11-kvm}
+macos_launcher=${KVM_WORKSTATION_MACOS_LAUNCHER:-$HOME/Projects/hackintosh/scripts/hackintosh-kvm.sh}
+
+usage() {
+    cat <<'EOF'
+Usage: kvm-workstation SYSTEM COMMAND [ARGS...]
+
+Systems:
+  windows    Run the serviceable Tiny11/Windows launcher in this repository
+  macos      Delegate to the separately audited Hackintosh KVM launcher
+  status     Show both VM states without changing either guest
+
+Examples:
+  kvm-workstation windows status
+  kvm-workstation windows open
+  kvm-workstation macos status
+
+Override the macOS launcher with KVM_WORKSTATION_MACOS_LAUNCHER. Runtime
+images and machine identity remain outside this repository.
+EOF
+}
+
+require_launcher() {
+    local label=$1 launcher=$2
+    [[ -x "$launcher" ]] || {
+        printf 'kvm-workstation: %s launcher is unavailable: %s\n' "$label" "$launcher" >&2
+        exit 1
+    }
+}
+
+case "${1:-}" in
+    windows)
+        shift
+        require_launcher Windows "$windows_launcher"
+        exec "$windows_launcher" "$@"
+        ;;
+    macos)
+        shift
+        require_launcher macOS "$macos_launcher"
+        exec "$macos_launcher" "$@"
+        ;;
+    status)
+        require_launcher Windows "$windows_launcher"
+        printf '%s\n' '=== Windows ==='
+        "$windows_launcher" status
+        printf '%s\n' '=== macOS ==='
+        if [[ -x "$macos_launcher" ]]; then
+            "$macos_launcher" status
+        else
+            printf 'macOS launcher is not installed: %s\n' "$macos_launcher"
+        fi
+        ;;
+    -h|--help|'') usage ;;
+    *) usage >&2; exit 2 ;;
+esac

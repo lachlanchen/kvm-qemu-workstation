@@ -1,0 +1,423 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+umask 077
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+config_file=${WINDOWS_TINY11_KVM_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/windows-tiny11-kvm/config.env}
+
+if [[ -r "$config_file" ]]; then
+    # Private, user-owned overrides.
+    # shellcheck disable=SC1090
+    source "$config_file"
+fi
+
+runtime_root=${WINDOWS_TINY11_RUNTIME_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/kvm-qemu-workstation/windows-tiny11}
+disk_image=${WINDOWS_TINY11_DISK:-$runtime_root/disks/windows-tiny11.qcow2}
+disk_size=${WINDOWS_TINY11_DISK_SIZE:-128G}
+install_iso=${WINDOWS_TINY11_ISO:-$runtime_root/installer/tiny11.iso}
+virtio_iso=${WINDOWS_TINY11_VIRTIO_ISO:-$runtime_root/installer/virtio-win.iso}
+tools_iso=${WINDOWS_TINY11_TOOLS_ISO:-$runtime_root/installer/tiny11-tools.iso}
+ram_gib=${WINDOWS_TINY11_RAM_GIB:-8}
+vcpu_count=${WINDOWS_TINY11_VCPUS:-4}
+vnc_display=${WINDOWS_TINY11_VNC_DISPLAY:-43}
+novnc_port=${WINDOWS_TINY11_NOVNC_PORT:-6143}
+rdp_port=${WINDOWS_TINY11_RDP_PORT:-3399}
+ssh_port=${WINDOWS_TINY11_SSH_PORT:-2290}
+
+state_dir=$runtime_root/state
+log_dir=$runtime_root/logs
+ovmf_code=/usr/share/OVMF/OVMF_CODE_4M.fd
+ovmf_vars_source=/usr/share/OVMF/OVMF_VARS_4M.fd
+ovmf_vars=$state_dir/OVMF_VARS.fd
+qemu_pid_file=$state_dir/qemu.pid
+qmp_socket=$state_dir/qmp.sock
+qga_socket=$state_dir/qga.sock
+installed_marker=$state_dir/windows-installed
+tpm_dir=$state_dir/tpm
+tpm_socket=$state_dir/swtpm.sock
+tpm_pid_file=$state_dir/swtpm.pid
+novnc_pid_file=$state_dir/novnc.pid
+novnc_web=$state_dir/novnc-web
+novnc_web_template=$script_dir/novnc-web/index.html
+novnc_system_root=${WINDOWS_TINY11_NOVNC_SYSTEM_ROOT:-/usr/share/novnc}
+novnc_tmux_session=${WINDOWS_TINY11_NOVNC_SESSION:-windows-tiny11-novnc}
+vnc_port=$((5900 + vnc_display))
+novnc_url="http://127.0.0.1:$novnc_port/"
+
+say() { printf '[windows-tiny11] %s\n' "$*"; }
+die() { printf '[windows-tiny11] error: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+    cat <<'EOF'
+Usage: windows-tiny11-kvm COMMAND
+
+Commands:
+  prepare      Create private state and a sparse virtual disk
+  verify       Validate host, media, ports, and disk
+  start        Start the VM and its localhost-only noVNC console
+  stop         Ask Windows to shut down cleanly through ACPI/QMP
+  force-stop   Stop only this verified project-owned QEMU process
+  status       Show VM, console, storage, and resource status
+  mark-installed
+               Mark setup complete so later starts boot only from the disk
+  install-desktop
+               Install a user-local application launcher
+  url          Print the localhost-only noVNC URL
+  open         Open the noVNC URL on the current Linux desktop
+EOF
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"
+}
+
+pid_from_file() {
+    local path=$1 pid
+    [[ -r "$path" ]] || return 1
+    read -r pid <"$path"
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    printf '%s\n' "$pid"
+}
+
+qemu_pid() {
+    local pid cmdline
+    pid=$(pid_from_file "$qemu_pid_file") || return 1
+    cmdline=$(tr '\0' ' ' <"/proc/$pid/cmdline")
+    [[ "$cmdline" == *"Windows-Tiny11"* && "$cmdline" == *"$disk_image"* ]] || return 1
+    printf '%s\n' "$pid"
+}
+
+owned_aux_pid() {
+    local path=$1 marker=$2 pid cmdline
+    pid=$(pid_from_file "$path") || return 1
+    cmdline=$(tr '\0' ' ' <"/proc/$pid/cmdline")
+    [[ "$cmdline" == *"$marker"* ]] || return 1
+    printf '%s\n' "$pid"
+}
+
+port_is_free() {
+    local port=$1
+    ! ss -H -ltn "sport = :$port" | grep -q .
+}
+
+require_uint() {
+    local name=$1 value=$2
+    [[ "$value" =~ ^[1-9][0-9]*$ ]] || die "$name must be a positive integer"
+}
+
+validate_settings() {
+    require_uint WINDOWS_TINY11_RAM_GIB "$ram_gib"
+    require_uint WINDOWS_TINY11_VCPUS "$vcpu_count"
+    require_uint WINDOWS_TINY11_VNC_DISPLAY "$vnc_display"
+    require_uint WINDOWS_TINY11_NOVNC_PORT "$novnc_port"
+    require_uint WINDOWS_TINY11_RDP_PORT "$rdp_port"
+    require_uint WINDOWS_TINY11_SSH_PORT "$ssh_port"
+    (( ram_gib <= 96 )) || die 'RAM request exceeds the 96 GiB safety ceiling'
+    (( vcpu_count <= 16 )) || die 'vCPU request exceeds the 16-vCPU safety ceiling'
+    (( vnc_port <= 65535 && novnc_port <= 65535 && rdp_port <= 65535 && ssh_port <= 65535 )) || \
+        die 'one or more configured ports are invalid'
+    [[ "$disk_size" =~ ^[1-9][0-9]*[GMTP]$ ]] || die 'disk size must look like 128G'
+}
+
+prepare_novnc_web() {
+    [[ -r "$novnc_web_template" ]] || die "missing noVNC landing page: $novnc_web_template"
+    [[ -r "$novnc_system_root/vnc.html" ]] || die "missing system noVNC files: $novnc_system_root"
+    install -d -m 0700 "$novnc_web"
+    install -m 0600 "$novnc_web_template" "$novnc_web/index.html"
+    ln -sfn "$novnc_system_root/app" "$novnc_web/app"
+    ln -sfn "$novnc_system_root/core" "$novnc_web/core"
+    ln -sfn "$novnc_system_root/vendor" "$novnc_web/vendor"
+    ln -sfn "$novnc_system_root/vnc.html" "$novnc_web/vnc.html"
+    [[ ! -e "$novnc_system_root/vnc_lite.html" ]] || \
+        ln -sfn "$novnc_system_root/vnc_lite.html" "$novnc_web/vnc_lite.html"
+}
+
+prepare() {
+    validate_settings
+    require_command qemu-img
+    install -d -m 0700 "$runtime_root" "$state_dir" "$log_dir" \
+        "$runtime_root/disks" "$runtime_root/installer" "$tpm_dir"
+    [[ -r "$ovmf_code" ]] || die "missing OVMF firmware: $ovmf_code"
+    [[ -r "$ovmf_vars_source" ]] || die "missing OVMF variable template: $ovmf_vars_source"
+    if [[ ! -f "$ovmf_vars" ]]; then
+        install -m 0600 "$ovmf_vars_source" "$ovmf_vars"
+    fi
+    if [[ ! -f "$disk_image" ]]; then
+        qemu-img create -f qcow2 -o compat=1.1,lazy_refcounts=on,preallocation=off \
+            "$disk_image" "$disk_size"
+        chmod 0600 "$disk_image"
+    fi
+    prepare_novnc_web
+    say "private state ready; sparse disk capacity: $disk_size"
+}
+
+verify() {
+    prepare
+    require_command qemu-system-x86_64
+    require_command swtpm
+    require_command websockify
+    [[ -r /dev/kvm && -w /dev/kvm ]] || die '/dev/kvm is unavailable to this user'
+    if [[ ! -e "$installed_marker" ]]; then
+        [[ -s "$install_iso" ]] || die "Tiny11 installation ISO is missing: $install_iso"
+        [[ -s "$virtio_iso" ]] || die "VirtIO driver ISO is missing: $virtio_iso"
+        [[ -s "$tools_iso" ]] || die "guest bootstrap ISO is missing: $tools_iso"
+    fi
+    if ! qemu_pid >/dev/null 2>&1; then
+        port_is_free "$vnc_port" || die "VNC port $vnc_port is already in use"
+        port_is_free "$novnc_port" || die "noVNC port $novnc_port is already in use"
+        port_is_free "$rdp_port" || die "RDP forwarding port $rdp_port is already in use"
+        port_is_free "$ssh_port" || die "SSH forwarding port $ssh_port is already in use"
+        qemu-img check -q "$disk_image" || die 'qcow2 consistency check failed'
+    fi
+    say "KVM available; RAM=${ram_gib}G vCPUs=$vcpu_count"
+    qemu-img info --force-share "$disk_image"
+}
+
+start_tpm() {
+    local pid
+    if pid=$(owned_aux_pid "$tpm_pid_file" "$tpm_socket" 2>/dev/null); then
+        say "reusing swtpm PID $pid"
+        return
+    fi
+    rm -f -- "$tpm_socket" "$tpm_pid_file"
+    swtpm socket \
+        --tpm2 \
+        --tpmstate "dir=$tpm_dir" \
+        --ctrl "type=unixio,path=$tpm_socket" \
+        --log "file=$log_dir/swtpm.log,level=20" \
+        --pid "file=$tpm_pid_file" \
+        --flags not-need-init \
+        --terminate \
+        --daemon
+    for _ in {1..50}; do
+        [[ -S "$tpm_socket" ]] && return
+        sleep 0.1
+    done
+    die 'swtpm did not create its control socket'
+}
+
+start_novnc() {
+    local pid
+    require_command tmux
+    if tmux has-session -t "$novnc_tmux_session" 2>/dev/null && \
+            port_is_free "$novnc_port"; then
+        tmux kill-session -t "$novnc_tmux_session"
+    fi
+    if tmux has-session -t "$novnc_tmux_session" 2>/dev/null && \
+            ! port_is_free "$novnc_port"; then
+        pid=$(tmux display-message -p -t "$novnc_tmux_session:0.0" '#{pane_pid}')
+        printf '%s\n' "$pid" >"$novnc_pid_file"
+        say "reusing noVNC PID $pid"
+        return
+    fi
+    rm -f -- "$novnc_pid_file"
+    tmux new-session -d -s "$novnc_tmux_session" -c "$runtime_root" \
+        "exec websockify --web='$novnc_web' '127.0.0.1:$novnc_port' '127.0.0.1:$vnc_port' >>'$log_dir/novnc.log' 2>&1"
+    pid=$(tmux display-message -p -t "$novnc_tmux_session:0.0" '#{pane_pid}')
+    printf '%s\n' "$pid" >"$novnc_pid_file"
+    sleep 0.5
+    tmux has-session -t "$novnc_tmux_session" 2>/dev/null && \
+        ! port_is_free "$novnc_port" || \
+        die "noVNC failed to start; inspect $log_dir/novnc.log"
+}
+
+start_vm() {
+    local pid
+    local -a installer_args auxiliary_media_args boot_args
+    if pid=$(qemu_pid 2>/dev/null); then
+        start_novnc
+        say "VM already running as PID $pid"
+        say "console: $novnc_url"
+        return
+    fi
+    verify
+    start_tpm
+    rm -f -- "$qmp_socket" "$qga_socket" "$qemu_pid_file"
+
+    if [[ -e "$installed_marker" ]]; then
+        installer_args=()
+        auxiliary_media_args=()
+        boot_args=(-boot "order=c,menu=on")
+    else
+        installer_args=(
+            -drive "id=InstallMedia,if=none,format=raw,readonly=on,file=$install_iso"
+            -device "usb-storage,bus=xhci.0,drive=InstallMedia,bootindex=1,removable=on"
+            -drive "id=InstallMediaSata,if=none,format=raw,readonly=on,file=$install_iso"
+            -device "ide-cd,bus=ide.3,drive=InstallMediaSata"
+        )
+        auxiliary_media_args=(
+            -drive "id=VirtioDrivers,if=none,format=raw,readonly=on,file=$virtio_iso"
+            -device "ide-cd,bus=ide.1,drive=VirtioDrivers"
+            -drive "id=GuestTools,if=none,format=raw,readonly=on,file=$tools_iso"
+            -device "ide-cd,bus=ide.2,drive=GuestTools"
+        )
+        boot_args=(-boot "menu=on")
+    fi
+
+    qemu-system-x86_64 \
+        -name Windows-Tiny11,process=windows-tiny11 \
+        -enable-kvm \
+        -m "${ram_gib}G" \
+        -object "memory-backend-ram,id=ram0,size=${ram_gib}G,prealloc=off,dump=off" \
+        -machine q35,accel=kvm,memory-backend=ram0 \
+        -cpu host,hv-relaxed,hv-vapic,hv-time \
+        -smp "$vcpu_count",sockets=1,cores="$vcpu_count",threads=1 \
+        -device virtio-balloon-pci \
+        -device virtio-serial-pci,id=virtio-serial0 \
+        -chardev "socket,id=qga0,path=$qga_socket,server=on,wait=off" \
+        -device virtserialport,bus=virtio-serial0.0,nr=1,chardev=qga0,name=org.qemu.guest_agent.0 \
+        -drive "if=pflash,format=raw,readonly=on,file=$ovmf_code" \
+        -drive "if=pflash,format=raw,file=$ovmf_vars" \
+        -chardev "socket,id=chrtpm,path=$tpm_socket" \
+        -tpmdev emulator,id=tpm0,chardev=chrtpm \
+        -device tpm-tis,tpmdev=tpm0 \
+        -device qemu-xhci,id=xhci \
+        -device usb-kbd,bus=xhci.0 \
+        -device usb-tablet,bus=xhci.0 \
+        -drive "id=WindowsDisk,if=none,format=qcow2,cache=none,discard=unmap,file=$disk_image" \
+        -device ide-hd,bus=ide.0,drive=WindowsDisk,bootindex=2 \
+        "${installer_args[@]}" \
+        "${auxiliary_media_args[@]}" \
+        -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$rdp_port-:3389,hostfwd=tcp:127.0.0.1:$ssh_port-:22" \
+        -device e1000e,netdev=net0 \
+        -vga std \
+        -display none \
+        -vnc "127.0.0.1:$vnc_display,share=force-shared" \
+        "${boot_args[@]}" \
+        -rtc base=localtime,clock=host \
+        -qmp "unix:$qmp_socket,server=on,wait=off" \
+        -monitor none \
+        -serial none \
+        -daemonize \
+        -pidfile "$qemu_pid_file"
+
+    start_novnc
+    pid=$(qemu_pid) || die "QEMU failed to start; inspect $log_dir"
+    say "VM started as PID $pid"
+    say "console: $novnc_url"
+}
+
+qmp_powerdown() {
+    python3 - "$qmp_socket" <<'PY'
+import json
+import socket
+import sys
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(5)
+sock.connect(sys.argv[1])
+sock.recv(65536)
+for command in ({"execute": "qmp_capabilities"}, {"execute": "system_powerdown"}):
+    sock.sendall((json.dumps(command) + "\r\n").encode())
+    sock.recv(65536)
+sock.close()
+PY
+}
+
+stop_aux() {
+    tmux has-session -t "$novnc_tmux_session" 2>/dev/null && \
+        tmux kill-session -t "$novnc_tmux_session" || true
+    rm -f -- "$novnc_pid_file"
+}
+
+stop_vm() {
+    local pid
+    pid=$(qemu_pid 2>/dev/null) || {
+        say 'VM is not running'
+        stop_aux
+        return
+    }
+    [[ -S "$qmp_socket" ]] || die 'QMP socket is missing; use force-stop only after checking status'
+    qmp_powerdown
+    say 'ACPI shutdown requested; waiting up to 90 seconds'
+    for _ in {1..90}; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            rm -f -- "$qemu_pid_file" "$qmp_socket" "$qga_socket"
+            stop_aux
+            say 'VM stopped cleanly'
+            return
+        fi
+        sleep 1
+    done
+    die 'Windows did not shut down in 90 seconds; VM remains running'
+}
+
+force_stop() {
+    local pid
+    pid=$(qemu_pid 2>/dev/null) || die 'verified project-owned QEMU process is not running'
+    kill -TERM "$pid"
+    for _ in {1..50}; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    kill -0 "$pid" 2>/dev/null && die 'QEMU did not stop after SIGTERM'
+    rm -f -- "$qemu_pid_file" "$qmp_socket" "$qga_socket"
+    stop_aux
+    say 'project-owned VM stopped'
+}
+
+status() {
+    local pid
+    if pid=$(qemu_pid 2>/dev/null); then
+        say "VM running: PID $pid"
+        ps -p "$pid" -o pid,etimes,%cpu,%mem,rss,cmd --no-headers
+    else
+        say 'VM stopped'
+    fi
+    printf 'console: %s\n' "$novnc_url"
+    printf 'forwarded RDP: 127.0.0.1:%s -> guest:3389\n' "$rdp_port"
+    printf 'forwarded SSH: 127.0.0.1:%s -> guest:22\n' "$ssh_port"
+    if [[ -e "$installed_marker" ]]; then
+        printf 'boot mode: installed system (installer detached)\n'
+    else
+        printf 'boot mode: initial installation\n'
+    fi
+    ss -ltnp | grep -E ":($vnc_port|$novnc_port|$rdp_port|$ssh_port)\\b" || true
+    [[ -f "$disk_image" ]] && qemu-img info --force-share "$disk_image"
+}
+
+open_console() {
+    start_vm
+    if command -v firefox >/dev/null 2>&1; then
+        firefox --new-tab "$novnc_url" >/dev/null 2>&1 &
+    elif command -v gio >/dev/null 2>&1; then
+        gio open "$novnc_url" >/dev/null 2>&1 &
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$novnc_url" >/dev/null 2>&1 &
+    else
+        die 'neither gio nor xdg-open is installed; use the URL command'
+    fi
+    say "opened: $novnc_url"
+}
+
+install_desktop() {
+    local local_bin=${XDG_BIN_HOME:-$HOME/.local/bin}
+    local applications=${XDG_DATA_HOME:-$HOME/.local/share}/applications
+    install -d -m 0755 "$local_bin" "$applications"
+    ln -sfn "$script_dir/windows-tiny11-kvm" "$local_bin/windows-tiny11"
+    sed \
+        -e "s|@EXEC@|$local_bin/windows-tiny11 open|g" \
+        "$script_dir/windows-tiny11.desktop.in" >"$applications/windows-tiny11.desktop"
+    chmod 0644 "$applications/windows-tiny11.desktop"
+    say "desktop launcher installed: $applications/windows-tiny11.desktop"
+}
+
+case "${1:-}" in
+    prepare) prepare ;;
+    verify) verify ;;
+    start) start_vm ;;
+    stop) stop_vm ;;
+    force-stop) force_stop ;;
+    status) status ;;
+    mark-installed)
+        install -m 0600 /dev/null "$installed_marker"
+        say 'installation marked complete; later starts will boot only from the virtual disk'
+        ;;
+    install-desktop) install_desktop ;;
+    url) printf '%s\n' "$novnc_url" ;;
+    open) open_console ;;
+    -h|--help|'') usage ;;
+    *) usage >&2; exit 2 ;;
+esac

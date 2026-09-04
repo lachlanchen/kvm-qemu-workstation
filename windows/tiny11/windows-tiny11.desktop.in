@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Windows Tiny11 KVM
+Comment=Start the lightweight Windows VM and open its private noVNC console
+Exec=@EXEC@
+Icon=computer
+Terminal=false
+Categories=System;Emulator;
+StartupNotify=true

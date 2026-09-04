@@ -1,0 +1,42 @@
+--- a/tiny11maker.ps1
++++ b/tiny11maker.ps1
+@@ -33 +33,3 @@
+-    [ValidatePattern('^[c-zC-Z]$')][string]$SCRATCH
++    [ValidatePattern('^[c-zC-Z]$')][string]$SCRATCH,
++    [ValidateRange(0, 99)][int]$ImageIndex = 0,
++    [switch]$NonInteractive
+@@ -41,0 +44,2 @@
++$index = if ($ImageIndex -gt 0) { $ImageIndex } else { $null }
++
+@@ -130 +134,7 @@
+-        $index = Read-Host "Please enter the image index"
++        if ($ImageIndex -gt 0) {
++            $index = $ImageIndex
++        } elseif ($NonInteractive) {
++            throw 'An image index is required in non-interactive mode.'
++        } else {
++            $index = Read-Host "Please enter the image index"
++        }
+@@ -143,2 +153,5 @@
+-Set-ItemProperty -Path "$ScratchDisk\tiny11\sources\install.esd" -Name IsReadOnly -Value $false > $null 2>&1
+-Remove-Item "$ScratchDisk\tiny11\sources\install.esd" > $null 2>&1
++$copiedInstallEsd = "$ScratchDisk\tiny11\sources\install.esd"
++if (Test-Path -LiteralPath $copiedInstallEsd -PathType Leaf) {
++    Set-ItemProperty -LiteralPath $copiedInstallEsd -Name IsReadOnly -Value $false
++    Remove-Item -LiteralPath $copiedInstallEsd -Force
++}
+@@ -151,0 +165,3 @@
++    if ($NonInteractive) {
++        throw "Image index $index is not present in install.wim."
++    }
+@@ -473 +489,3 @@
+-Read-Host "Press Enter to continue"
++if (-not $NonInteractive) {
++    Read-Host "Press Enter to continue"
++}
+@@ -531 +549 @@
+-# Stop the transcript
++# Stop the transcript and return to the non-interactive wrapper.
+@@ -534 +552 @@
+-exit
++return
