@@ -28,6 +28,8 @@ Cấu hình Windows tham chiếu đã được xác minh trên Ubuntu 24.04 vớ
 
 `bin/kvm-workstation` là điểm vào chung. `windows/tiny11/windows-tiny11-kvm` quản lý KVM/QEMU, TPM, QMP, noVNC, RDP và SSH. `windows/tiny11/build/` chứa bước chuẩn bị theo commit cố định và bản vá nhỏ; `windows/tiny11/guest/` chứa khởi tạo và xác minh lặp lại an toàn; `docs/` ghi kiến trúc, cài đặt, ranh giới macOS và bài học xử lý lỗi.
 
+[Cài UU bản Windows gốc, chuyển tiếp cổng qua máy ảo riêng và phạm vi xác minh](../docs/uu-native-relay.md).
+
 Quy trình dùng Tiny11 builder thông thường có thể bảo trì, không dùng Tiny11 Core. Windows vẫn cần giấy phép Microsoft hợp lệ. Phần macOS là thử nghiệm tương tác không được hỗ trợ chính thức và chịu điều khoản giấy phép Apple.
 
 ## Bắt đầu nhanh

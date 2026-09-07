@@ -28,6 +28,8 @@ Windows 참조 설치는 Ubuntu 24.04, QEMU 8.2.2, OVMF, swtpm, 128 GiB 희소 �
 
 `bin/kvm-workstation`은 공통 진입점입니다. `windows/tiny11/windows-tiny11-kvm`은 KVM/QEMU, TPM, QMP, noVNC, RDP, SSH를 관리합니다. `windows/tiny11/build/`에는 고정 커밋 기반 준비와 작은 패치가, `windows/tiny11/guest/`에는 멱등 초기화 및 검증이, `docs/`에는 구조·설치·macOS 경계·문제 해결 경험이 있습니다.
 
+[Windows 네이티브 UU 설치, 별도 VM 포트 전달 경로 및 검증 범위](../docs/uu-native-relay.md).
+
 Tiny11 Core가 아닌 서비스 가능한 일반 Tiny11 builder를 사용합니다. Windows에는 유효한 Microsoft 라이선스가 필요합니다. macOS 경로는 공식 지원이 없는 상호 운용 실험이며 Apple 라이선스 조건을 따릅니다.
 
 ## 빠른 시작

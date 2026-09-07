@@ -28,6 +28,8 @@ La référence Windows a été validée sous Ubuntu 24.04 avec QEMU 8.2.2, OVMF,
 
 `bin/kvm-workstation` constitue l'entrée commune. `windows/tiny11/windows-tiny11-kvm` gère KVM/QEMU, TPM, QMP, noVNC, RDP et SSH. `windows/tiny11/build/` contient la préparation épinglée et un petit correctif ; `windows/tiny11/guest/` propose une initialisation et une vérification idempotentes ; `docs/` décrit l'architecture, l'installation, la frontière macOS et les enseignements du dépannage.
 
+[Installation native de UU, transfert de ports via une VM distincte et limites de validation](../docs/uu-native-relay.md).
+
 Le constructeur Tiny11 normal et maintenable est utilisé, pas Tiny11 Core. Windows exige toujours une licence Microsoft valide. La voie macOS est une expérience d'interopérabilité non prise en charge et reste soumise aux conditions de licence Apple.
 
 ## Démarrage rapide

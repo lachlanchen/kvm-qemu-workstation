@@ -29,6 +29,8 @@ KVM 提供 Linux 内核级硬件加速，QEMU 提供虚拟机及设备模型。�
 
 `bin/kvm-workstation` 提供统一入口；`windows/tiny11/windows-tiny11-kvm` 管理 KVM/QEMU、TPM、QMP、noVNC、RDP 与 SSH；`windows/tiny11/build/` 保存固定版本的构建准备和补丁；`windows/tiny11/guest/` 保存幂等的来宾初始化与验证；`docs/` 记录架构、安装、macOS 边界和故障经验。
 
+[原生 UU 安装、独立虚拟机端口映射路径及验证边界](../docs/uu-native-relay.md).
+
 流程使用可维护的常规 Tiny11 builder，而不是 Tiny11 Core。Windows 仍需要合法的 Microsoft 许可证。macOS 路径属于不受官方支持的互操作实验，并受 Apple 许可条款约束。
 
 ## 快速开始

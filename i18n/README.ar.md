@@ -28,6 +28,8 @@
 
 `bin/kvm-workstation` هو المدخل المشترك. يدير `windows/tiny11/windows-tiny11-kvm` تقنيات KVM/QEMU وTPM وQMP وnoVNC وRDP وSSH. يحتوي `windows/tiny11/build/` على إعداد مثبت إلى commit محدد ورقعة صغيرة، ويحتوي `windows/tiny11/guest/` على تهيئة وتحقق قابلين للتكرار، بينما تشرح `docs/` البنية والتثبيت وحدود macOS ودروس الأعطال.
 
+[تثبيت UU الأصلي ومسارات تحويل المنافذ عبر آلة افتراضية منفصلة وحدود التحقق](../docs/uu-native-relay.md).
+
 يُستخدم Tiny11 builder العادي القابل للصيانة وليس Tiny11 Core. ما زال Windows يحتاج ترخيص Microsoft صالحاً. أما مسار macOS فهو تجربة توافق غير مدعومة رسمياً وتخضع لشروط ترخيص Apple.
 
 ## بدء سريع

@@ -45,6 +45,7 @@ Apple-service logic is not duplicated here.
 | `windows/tiny11/windows-tiny11-kvm` | Guarded KVM/QEMU lifecycle, local noVNC, TPM, QMP, RDP, and SSH forwarding |
 | `windows/tiny11/build/` | Pinned Tiny11 builder preparation, non-interactive patch, build and reporting helpers |
 | `windows/tiny11/guest/` | Idempotent Windows bootstrap and verification scripts |
+| [`docs/uu-native-relay.md`](docs/uu-native-relay.md) | Native UU installation, separate VM port-mapping routes, and verification boundaries |
 | `docs/windows-tiny11.md` | Proven installation recipe and dual-path UEFI boot lesson |
 | `docs/macos-kvm.md` | macOS integration, licence boundary, and specialist-repo link |
 | `docs/architecture.md` | Runtime isolation, resources, ports, ownership, and shutdown design |
