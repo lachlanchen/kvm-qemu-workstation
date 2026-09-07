@@ -6,6 +6,23 @@ without changing the host's desktop, keyboard, dictation, or clipboard patches.
 It is still a vendor-session-dependent TCP forward, not a private LAN or a
 guaranteed replacement for a persistent SSH tunnel.
 
+## Availability follow-up — 2026-09-08
+
+The successful tests below are an acceptance record, not a guarantee of current
+availability. During the final check, UU reported the dedicated Mac offline and
+the guest mapping stopped forwarding. The Windows guest remained SSH-accessible
+and logged in. The independent cloud SSH route subsequently reached the Ubuntu
+peer and initially reached the Mac, which reported no active UU connections.
+One restart of the Mac's UU user agent renewed its server process but did not
+restore the mapping. A later LAN SSH probe to the Mac failed and the peer's ping
+also received no replies. The cause of that later loss was not established.
+
+No Ubuntu desktop or input component was restarted. The saved mapping and SSH
+aliases remain configured; the single return unit retries only SSH every 30
+seconds. Restore the remote relay's reachability before treating this UU route
+as available. Do not hide this dependency by silently changing to a cloud route
+or repeatedly restarting desktop services.
+
 ## Live bidirectional acceptance — 2026-09-08
 
 After the ordinary QR login, the native guest connected to a dedicated Mac UU
