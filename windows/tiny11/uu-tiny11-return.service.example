@@ -1,0 +1,19 @@
+# Install on the remote Ubuntu peer, after its UU mapping to Tiny11 works.
+# uu-workstation-via-tiny11 must pin the real Ubuntu workstation's SSH host key.
+[Unit]
+Description=SSH return through a dedicated Tiny11 UU endpoint
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o ExitOnForwardFailure=yes -o ConnectTimeout=10 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -R 127.0.0.1:22709:127.0.0.1:22 uu-workstation-via-tiny11
+Restart=always
+RestartSec=30
+TimeoutStopSec=10
+UMask=0077
+LogRateLimitIntervalSec=300
+LogRateLimitBurst=6
+
+[Install]
+WantedBy=default.target

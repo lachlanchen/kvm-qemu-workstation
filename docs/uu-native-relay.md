@@ -6,7 +6,66 @@ without changing the host's desktop, keyboard, dictation, or clipboard patches.
 It is still a vendor-session-dependent TCP forward, not a private LAN or a
 guaranteed replacement for a persistent SSH tunnel.
 
-## Availability follow-up — 2026-09-08
+## Current setup: Tiny11 is the relay target
+
+The final 2026-09-08 setup uses only the two Ubuntu hosts and the existing
+Tiny11 guest. The other Ubuntu machine controls **Tiny11's separate UU device**
+and maps its own loopback port to the workstation's SSH server through QEMU's
+guest-to-host address:
+
+```text
+7090:127.0.0.1:22440 -> UU Port Mapping -> Tiny11 -> 10.0.2.2:22 (workstation)
+workstation:127.0.0.1:22709 -> SSH reverse forward on that carrier -> 7090:22
+```
+
+There is no Mac/3040 hop. The SSH data path does not use a cloud VPS. Cloud SSH
+was used only to configure the initial peer-side UU panel; final shell and
+transfer tests used the new UU route itself. Neither Ubuntu desktop is the
+mapping's target. Taking over **Tiny11's own UU identity** can still interrupt
+it, so keep that VM reserved for the carrier and use its existing noVNC view
+when local GUI management is needed.
+
+In 7090's UU client, select `TINY11-KVM`, open **Port Mapping**, and save:
+
+| Field | Verified example |
+| --- | --- |
+| Name | `SSH-lachlanserver` |
+| Local port on 7090 | `22440` |
+| Target address as reached by Tiny11 | `10.0.2.2` |
+| Target port | `22` |
+
+The rule succeeded and bound only `127.0.0.1:22440` on 7090. QEMU's host address
+is specific to the tested user-network configuration; verify it for other VMs.
+Keep the destination's existing host-key pin and user key. This connection
+must return the Ubuntu workstation's hostname, not the Windows guest's.
+
+On 7090, the existing `uu-lachlanserver` SSH alias uses that port. One
+`uu-tiny11-return.service` then runs the reverse forward, binding workstation
+loopback `22709` to 7090's SSH service. Adapt the
+[Tiny11 return-unit example](../windows/tiny11/uu-tiny11-return.service.example)
+to your verified alias before enabling it. It retries SSH every 30 seconds;
+it never logs in to UU, creates a mapping, or takes over a desktop.
+
+The workstation's `uu-7090` alias uses **local port 22709 with no ProxyJump**.
+No shell reload is required for existing `ssh-uu-7090` and
+`ssh-uu-lachlanserver` helpers. Explicit `*-via-vm` aliases use the same route.
+The former workstation-side `uu-3040-return.service` is disabled, and its old
+configuration is retained privately for history rather than used as a fallback.
+
+Both hostnames, Chinese/Japanese text, exit statuses 0/7/37, and a byte-exact
+65569-byte SCP transfer with a peer-initiated return passed. Management focus
+was released back to the peer's original desktop relay. No Ubuntu/Windows
+reboot, desktop logout, host bridge restart, or input patch was needed.
+
+The Windows app's existing auto-start setting and the peer's enabled user unit
+provide saved configuration. **Automatic vendor reconnection after a reboot
+has not been tested.** Keep the guest, both UU clients and this one mapping
+available; service enablement alone is not proof of carrier availability.
+
+## Historical Mac-relay availability follow-up — 2026-09-08
+
+The following Mac route was retired when the user clarified that Tiny11 alone
+should provide the extra endpoint. It is not the current operating topology.
 
 The successful tests below are an acceptance record, not a guarantee of current
 availability. During the final check, UU reported the dedicated Mac offline and
@@ -23,7 +82,7 @@ seconds. Restore the remote relay's reachability before treating this UU route
 as available. Do not hide this dependency by silently changing to a cloud route
 or repeatedly restarting desktop services.
 
-## Live bidirectional acceptance — 2026-09-08
+## Historical Mac-relay acceptance — 2026-09-08
 
 After the ordinary QR login, the native guest connected to a dedicated Mac UU
 endpoint on the peer's LAN. No takeover prompt appeared. One rule mapped the
