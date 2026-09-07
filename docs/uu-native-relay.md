@@ -6,6 +6,48 @@ without changing the host's desktop, keyboard, dictation, or clipboard patches.
 It is still a vendor-session-dependent TCP forward, not a private LAN or a
 guaranteed replacement for a persistent SSH tunnel.
 
+## Live bidirectional acceptance — 2026-09-08
+
+After the ordinary QR login, the native guest connected to a dedicated Mac UU
+endpoint on the peer's LAN. No takeover prompt appeared. One rule mapped the
+guest's **127.0.0.1:23709** to the peer Ubuntu machine's LAN SSH port through
+that Mac. Native Windows reported that the listener belonged to GameViewer
+and was loopback-only. The normal Windows Firewall prompt for the signed
+NetEase application was approved inside the guest; host firewall and QEMU
+forwarding policy were unchanged.
+
+```text
+Ubuntu A -> SSH to Windows VM -> native UU -> dedicated Mac -> Ubuntu B:22
+Ubuntu B:127.0.0.1:22440 -> reverse SSH over that carrier -> Ubuntu A:22
+```
+
+The previously idle return-tunnel unit was repointed to the VM SSH alias.
+Reusing that one unit avoided a second supervisor. Existing user keys and final
+host-key pins were preserved. The familiar `ssh-uu-*` commands were retained
+by updating their underlying SSH aliases only after both directions passed.
+Existing cloud aliases stayed separate.
+
+Acceptance included correct hostnames in both directions, Chinese/Japanese
+shell output, exact exit statuses `0`, `7`, and `37`, a byte-exact 42496-byte
+binary/Unicode SCP round trip, and a separate SCP transfer initiated by the
+peer through the return alias. With no active return clients, restarting only
+the SSH return unit restored the reverse listener and a fresh return shell.
+Neither UU client nor either Ubuntu desktop was restarted.
+
+For another installation, adapt the
+[return-unit example](../windows/tiny11/uu-ssh-return.service.example) to a
+verified SSH alias and unused peer loopback port. Start only one owner for that
+port, verify the actual bind address on the peer, and use its own authorized
+key for return login. The unit retries its SSH connection every 30 seconds;
+it never creates a vendor mapping, takes over a desktop, or restarts UU.
+
+The guest's normal **start with Windows** option was already enabled.
+The GUI service, saved rule, aliases, and return unit are persistent settings,
+but OS reboot and automatic vendor reconnection were not tested. Both Ubuntu
+UU devices remain outside this mapping's control ownership; the dedicated
+Mac and VM still have to stay available. Do not equate this with a guaranteed
+always-on overlay or independence from vendor updates and route changes.
+
 ## Install without restarting the guest
 
 Use an existing, SSH-accessible Windows guest. Keep its disks, user profile,
@@ -154,11 +196,11 @@ Windows user/apps preserved; strict SSH login to the VM; an SSH jump through
 that VM to a LAN Windows peer; and reachability of the host's SSH banner from
 the guest. The host's existing UU bridge was not restarted or patched.
 
-The new UU guest was **not logged in** at this checkpoint. Native UU mappings,
-remote SSH through those mappings, real takeover coexistence, and reboot
-reconnection remain **unverified**. Prepared SSH aliases are not evidence of a
-running tunnel. Complete the account login, enable the reviewed rules, then
-test hostname, Unicode shell output, file round trip, and ordinary desktop use.
+At the initial installation checkpoint the guest was **not logged in** and
+the aliases were only prepared. The 2026-09-08 acceptance above supersedes
+that status for the tested two-way route. Actual user-driven takeovers and
+automatic vendor reconnection after reboot remain unverified; prepared aliases
+alone are never evidence of a working tunnel.
 
 For application desktops moved onto a Windows virtual display, QEMU's physical
 console can retain an old frame while the guest's live VNC view is current.

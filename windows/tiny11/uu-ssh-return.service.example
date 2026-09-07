@@ -1,0 +1,18 @@
+[Unit]
+Description=Return SSH through an existing native UU mapping in a Windows VM
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Configure and pin uu-lab-via-vm first. This command never opens UU or takes over a desktop.
+ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o ExitOnForwardFailure=yes -o ConnectTimeout=15 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -R 127.0.0.1:22440:127.0.0.1:22 uu-lab-via-vm
+Restart=always
+RestartSec=30
+TimeoutStopSec=10
+LogRateLimitIntervalSec=300
+LogRateLimitBurst=6
+UMask=0077
+
+[Install]
+WantedBy=default.target
